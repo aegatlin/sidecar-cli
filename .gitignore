@@ -1,0 +1,5 @@
+# build output — sidecar is installed to ~/.local/bin, never into the repo
+sidecar
+probe
+.DS_Store
+recon/probe-dump.txt
