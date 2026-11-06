@@ -1,6 +1,6 @@
 # sidecar
 
-Toggle an iPad on and off as a second display from the command line.
+Connect an iPad as a Sidecar display from the command line.
 
 ## Build
 
@@ -13,25 +13,13 @@ No dependencies. macOS only.
 ## Use
 
 ```sh
-sidecar toggle        # connect if off, disconnect if on
-sidecar status        # device name, or "disconnected"
-sidecar devices       # list reachable iPads
-sidecar connect
+sidecar connect       # connect to the first reachable iPad
 sidecar disconnect
 ```
 
-Any command takes an optional device name if you have more than one iPad:
-
-```sh
-sidecar toggle "gatlin's ipad"
-```
-
-Matching ignores case, accents and curly-vs-straight apostrophes, and accepts
-any unambiguous substring. `--json` works on `devices` and `status`.
-
-Run `sidecar --help` for the rest, including exit codes.
+Run `sidecar --help` for exit codes.
 
 ## Gotcha
 
-Connecting fails if the iPad is locked or asleep, even though it still shows up
-in `sidecar devices`. Wake and unlock it first. The error says so.
+Connecting fails if the iPad is locked or asleep, even though it is still
+reachable. Wake and unlock it first. The error says so.
