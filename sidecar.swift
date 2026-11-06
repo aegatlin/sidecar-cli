@@ -37,6 +37,14 @@ struct Device {
     let name: String
     let id: String
     fileprivate let object: NSObject
+
+    /// Whether two `Device` values describe the same iPad. Compares identifiers, and
+    /// falls back to the name if SidecarCore did not supply one — otherwise every
+    /// device would share the empty id and look identical.
+    func isSame(as other: Device) -> Bool {
+        if !id.isEmpty && !other.id.isEmpty { return id == other.id }
+        return name == other.name
+    }
 }
 
 enum SidecarCoreError: Error {
@@ -178,7 +186,11 @@ final class SidecarCore {
             if Date() >= deadline {
                 throw SidecarCoreError.timedOut(timeout)
             }
-            RunLoop.current.run(mode: .default, before: deadline)
+            // Bound each wait to one tick. A timer firing does not make run(mode:before:)
+            // return — only an input source does — so waiting until `deadline` would
+            // miss a completion delivered off the main thread until the timeout expired.
+            RunLoop.current.run(mode: .default,
+                                before: min(deadline, Date().addingTimeInterval(0.05)))
         }
     }
 }
@@ -264,7 +276,7 @@ func report(_ error: Error, action: String, device: Device?) -> Never {
         let name = device.map { " '\($0.name)'" } ?? ""
         if code == deviceWiFiNotEnabled {
             fail("""
-                 could not connect to\(name): the iPad is not reachable. It is almost \
+                 \(action)\(name) failed: the iPad is not reachable. It is almost \
                  always locked or asleep — wake it and unlock it, then try again.
                  (SidecarErrorDeviceWiFiNotEnabled, \(code))
                  """, .sidecarError)
@@ -304,7 +316,8 @@ COMMANDS
   toggle [name]        Connect if disconnected, disconnect if connected
   help                 Show this text
 
-  With no [name], commands use the only reachable device. If more than one is
+  With no [name], disconnect and toggle act on the connected device if there is
+  one. Otherwise commands use the only reachable device; if more than one is
   reachable they report the candidates rather than picking one. A name may be
   given unquoted; matching ignores case, accents and curly-vs-straight
   apostrophes, and accepts any unambiguous substring.
@@ -356,10 +369,10 @@ func parseArguments(_ argv: [String]) -> Arguments {
             guard index < argv.count else {
                 fail("--timeout needs a value in seconds", .usage)
             }
-            guard let seconds = TimeInterval(argv[index]), seconds > 0 else {
-                fail("--timeout needs a positive number of seconds, got '\(argv[index])'", .usage)
-            }
-            result.timeout = seconds
+            result.timeout = parseTimeout(argv[index])
+
+        case _ where argument.hasPrefix("--timeout="):
+            result.timeout = parseTimeout(String(argument.dropFirst("--timeout=".count)))
 
         default:
             if argument.hasPrefix("-") {
@@ -377,9 +390,19 @@ func parseArguments(_ argv: [String]) -> Arguments {
     result.command = command
 
     // Remaining words are the device name; joining them means it need not be quoted.
+    // A blank name ("" or "  ") would substring-match every device, so treat it as absent.
     let rest = words.dropFirst().joined(separator: " ")
-    result.name = rest.isEmpty ? nil : rest
+    result.name = normalize(rest).isEmpty ? nil : rest
     return result
+}
+
+/// Finite and positive only: `inf` would wait forever, and `Int(inf)` traps when the
+/// timeout message is formatted.
+func parseTimeout(_ text: String) -> TimeInterval {
+    guard let seconds = TimeInterval(text), seconds.isFinite, seconds > 0 else {
+        fail("--timeout needs a positive number of seconds, got '\(text)'", .usage)
+    }
+    return seconds
 }
 
 // MARK: - Commands
@@ -399,13 +422,11 @@ func listDevices(_ core: SidecarCore, json: Bool) -> Never {
         report(error, action: "listing devices", device: nil)
     }
 
-    let connectedIDs = Set(connected.map(\.id))
-
     if json {
         printJSON(all.map { device in
             ["name": device.name,
              "id": device.id,
-             "connected": connectedIDs.contains(device.id)] as [String: Any]
+             "connected": connected.contains { $0.isSame(as: device) }] as [String: Any]
         })
         exit(ExitCode.success.rawValue)
     }
@@ -449,10 +470,22 @@ func connectCommand(_ core: SidecarCore, name: String?, timeout: TimeInterval) -
 
 func disconnectCommand(_ core: SidecarCore, name: String?, timeout: TimeInterval) -> Never {
     let devices: [Device]
-    do { devices = try core.devices() }
-    catch { report(error, action: "listing devices", device: nil) }
+    let connected: [Device]
+    do {
+        devices = try core.devices()
+        connected = try core.connectedDevices()
+    } catch {
+        report(error, action: "reading status", device: nil)
+    }
 
-    let device = selectDevice(from: devices, matching: name)
+    // As with toggle: with no name, the live session is the only sensible target, so
+    // don't report ambiguity just because a second iPad is in range.
+    let device: Device
+    if name == nil, let live = connected.first {
+        device = live
+    } else {
+        device = selectDevice(from: devices, matching: name)
+    }
     do { try core.disconnect(device, timeout: timeout) }
     catch { report(error, action: "disconnecting from", device: device) }
 
@@ -480,7 +513,7 @@ func toggleCommand(_ core: SidecarCore, name: String?, timeout: TimeInterval) ->
         device = selectDevice(from: devices, matching: name)
     }
 
-    if connected.contains(where: { $0.id == device.id }) {
+    if connected.contains(where: { $0.isSame(as: device) }) {
         do { try core.disconnect(device, timeout: timeout) }
         catch { report(error, action: "disconnecting from", device: device) }
         emit("disconnected: \(device.name)")

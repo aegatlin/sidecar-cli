@@ -82,7 +82,10 @@ forever if the completion block never fires. `SidecarCore.invoke` instead:
 
 1. Installs a 0.05s repeating `Timer` as a run-loop source. Without a source,
    `RunLoop.run(mode:before:)` returns instantly and the loop spins hot on CPU.
-2. Polls a lock-guarded `finished` flag until the deadline.
+2. Polls a lock-guarded `finished` flag until the deadline, running the loop in
+   0.05s slices. Do not pass the full deadline to `run(mode:before:)`: a timer firing
+   does not make it return (only an input source does), so a completion delivered on
+   another queue would go unnoticed until the timeout.
 
 Spinning the run loop rather than blocking the thread means a completion delivered on
 the **main queue** would still land, instead of deadlocking. In practice SidecarCore
