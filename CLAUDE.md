@@ -11,6 +11,10 @@ There is no public API for this. Assume Apple will eventually break it.
 - Source: `sidecar.swift` (one file, no SwiftPM manifest, no Xcode project)
 - Build: `swiftc -O sidecar.swift -o ~/.local/bin/sidecar`
 - Diagnostics: `recon/` — not built, not shipped. See `recon/README.md`.
+- CI: `.github/workflows/build.yml` compiles on a macOS runner and smoke-tests the
+  exit codes that never reach SidecarCore (help, usage errors). It has no iPad, so it
+  cannot test connect/disconnect. Keep the smoke test in step with `--help`.
+- License: MIT. Open source, not monetized.
 
 ## Scope
 
@@ -23,8 +27,9 @@ sidecar connect | disconnect | --help
 
 Both commands act on the first device SidecarCore reports. There are no flags, no
 device-name argument, no status/list/toggle commands, no `--json`, and a fixed 15s
-timeout. An earlier version had all of those; they were removed as unused. Do not
-add them back unless asked. If you ever need connection status, `connectedDevices`
+timeout. An earlier version had all of those; they were removed as unused. The
+policy is to add a command only once there is a real need for it, not because it is
+possible. Do not add them back unless asked. If you ever need connection status, `connectedDevices`
 is the mechanism (see below).
 
 ## Architecture
