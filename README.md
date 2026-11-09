@@ -11,8 +11,16 @@ Run `sidecar --help` for exit codes.
 
 ## Install
 
-Requires macOS on a Mac that supports Sidecar, and the Xcode Command Line Tools
-(`xcode-select --install`). No other dependencies.
+Requires macOS on a Mac that supports Sidecar.
+
+```sh
+brew install aegatlin/tap/sidecar
+```
+
+The formula compiles `sidecar.swift` on your machine with the Xcode Command Line
+Tools, which Homebrew already requires. No other dependencies.
+
+Or build it yourself (`xcode-select --install` first if you don't have Homebrew):
 
 ```sh
 swiftc -O sidecar.swift -o ~/.local/bin/sidecar
